@@ -72,27 +72,40 @@ body {
   width: 100%;
   max-width: 500px; /* Constrains cleanly on tablet/desktop while being 100% on phones */
   min-height: 100vh;
+  min-height: 100dvh; /* Accurate mobile dynamic viewport height */
   display: flex;
   flex-direction: column;
   background-color: var(--bg-primary);
   border-left: 1px solid var(--border-subtle);
   border-right: 1px solid var(--border-subtle);
   position: relative;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Header */
 .app-header {
-  height: var(--header-height);
+  min-height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top, 10px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
   z-index: 50;
+  transition: padding-top 0.2s ease;
+}
+
+/* Standalone PWA adjustments for mobile notch / camera hole-punch / status bar */
+@media all and (display-mode: standalone), (display-mode: fullscreen) {
+  .app-header {
+    /* Ensures ample clearance for status bar, clock, battery & camera hole punch */
+    padding-top: max(34px, calc(10px + env(safe-area-inset-top, 28px)));
+  }
 }
 
 .brand {
@@ -723,6 +736,7 @@ body {
 .app-footer {
   margin-top: auto;
   padding: 12px 16px;
+  padding-bottom: max(12px, calc(12px + env(safe-area-inset-bottom, 0px)));
   background-color: var(--bg-secondary);
   border-top: 1px solid var(--border-subtle);
   display: flex;
