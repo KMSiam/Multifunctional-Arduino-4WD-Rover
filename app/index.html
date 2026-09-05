@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Rover Controller // 4WD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Header Bar -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">
+          <span class="logo-icon">◈</span>
+          <span class="brand-text">ROVER<strong>4WD</strong></span>
+        </div>
+        <div class="status-indicator" id="status-pill">
+          <span class="status-dot"></span>
+          <span class="status-label" id="status-text">DISCONNECTED</span>
+        </div>
+      </div>
+      <button class="btn btn-connect" id="btn-connect">
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text" id="btn-connect-text">CONNECT</span>
+      </button>
+    </header>
+
+    <!-- Mode Selector Tabs -->
+    <nav class="mode-nav">
+      <button class="mode-tab active" data-mode="0" id="tab-remote">
+        <span class="tab-code">M0</span>
+        <span class="tab-name">REMOTE</span>
+      </button>
+      <button class="mode-tab" data-mode="1" id="tab-line">
+        <span class="tab-code">M1</span>
+        <span class="tab-name">LINE</span>
+      </button>
+      <button class="mode-tab" data-mode="2" id="tab-obstacle">
+        <span class="tab-code">M2</span>
+        <span class="tab-name">OBSTACLE</span>
+      </button>
+      <button class="mode-tab" data-mode="3" id="tab-draw">
+        <span class="tab-code">M3</span>
+        <span class="tab-name">DRAW</span>
+      </button>
+    </nav>
+
+    <!-- Main Viewport Panes -->
+    <main class="main-viewport">
+      
+      <!-- PANE 0: Remote Control (Default) -->
+      <section class="mode-panel active" id="panel-remote">
+        <!-- Speed Control Section -->
+        <div class="speed-control-card">
+          <div class="card-header">
+            <span class="card-title">THROTTLE / SPEED</span>
+            <span class="speed-badge" id="speed-display">LVL 5 // PWM 142</span>
+          </div>
+          <div class="speed-slider-wrap">
+            <button class="btn-speed-step" id="btn-speed-down">-</button>
+            <input type="range" id="speed-slider" min="0" max="9" value="5" step="1" class="custom-range">
+            <button class="btn-speed-step" id="btn-speed-up">+</button>
+          </div>
+          <div class="speed-ticks">
+            <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span>
+            <span class="tick-mid">5</span><span>6</span><span>7</span><span>8</span><span>9</span>
+          </div>
+        </div>
+
+        <!-- Directional Tactile Pad -->
+        <div class="dpad-container">
+          <div class="dpad-grid">
+            <div class="dpad-cell"></div>
+            <button class="dpad-btn dpad-up" id="btn-fwd" data-cmd="F">
+              <span class="dpad-arrow">▲</span>
+              <span class="dpad-text">FWD</span>
+            </button>
+            <div class="dpad-cell"></div>
+
+            <button class="dpad-btn dpad-left" id="btn-left" data-cmd="L">
+              <span class="dpad-arrow">◀</span>
+              <span class="dpad-text">LEFT</span>
+            </button>
+            <button class="dpad-btn dpad-center" id="btn-stop" data-cmd="S">
+              <span class="dpad-stop-icon">■</span>
+              <span class="dpad-text">STOP</span>
+            </button>
+            <button class="dpad-btn dpad-right" id="btn-right" data-cmd="R">
+              <span class="dpad-arrow">▶</span>
+              <span class="dpad-text">RIGHT</span>
+            </button>
+
+            <div class="dpad-cell"></div>
+            <button class="dpad-btn dpad-down" id="btn-bwd" data-cmd="B">
+              <span class="dpad-arrow">▼</span>
+              <span class="dpad-text">BWD</span>
+            </button>
+            <div class="dpad-cell"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 1: Line Following Mode -->
+      <section class="mode-panel" id="panel-line">
+        <div class="auto-card">
+          <div class="card-header">
+            <span class="card-title">3-CHANNEL LINE TRACKER</span>
+            <span class="live-pill active">AUTONOMOUS</span>
+          </div>
+          <div class="ir-sensor-visualizer">
+            <div class="ir-channel" id="ir-left">
+              <span class="ir-bulb"></span>
+              <span class="ir-label">A0 LEFT</span>
+            </div>
+            <div class="ir-channel active-line" id="ir-center">
+              <span class="ir-bulb"></span>
+              <span class="ir-label">A1 CENTER</span>
+            </div>
+            <div class="ir-channel" id="ir-right">
+              <span class="ir-bulb"></span>
+              <span class="ir-label">A2 RIGHT</span>
+            </div>
+          </div>
+          <div class="track-status-box">
+            <div class="track-msg" id="line-status-msg">Rover is tracking line automatically</div>
+            <p class="track-desc">Using differential drive corrections. Lost line recovery algorithm will gently pivot if track is broken.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 2: Obstacle Avoidance Mode -->
+      <section class="mode-panel" id="panel-obstacle">
+        <div class="auto-card">
+          <div class="card-header">
+            <span class="card-title">ULTRASONIC RADAR</span>
+            <span class="live-pill active">SCANNING</span>
+          </div>
+          <div class="radar-display">
+            <div class="radar-sweep-cone"></div>
+            <div class="radar-crosshair-h"></div>
+            <div class="radar-crosshair-v"></div>
+            <div class="radar-distance-readout">
+              <span class="distance-num" id="radar-distance-val">--</span>
+              <span class="distance-unit">CM</span>
+            </div>
+          </div>
+          <div class="obstacle-info-grid">
+            <div class="stat-box">
+              <span class="stat-lbl">SAFE MARGIN</span>
+              <span class="stat-val">20 CM</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-lbl">SERVO SWEEP</span>
+              <span class="stat-val">30° ↔ 150°</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 3: Draw-a-Road Mode -->
+      <section class="mode-panel" id="panel-draw">
+        <div class="draw-card">
+          <div class="card-header">
+            <span class="card-title">PAINT-A-PATH CANVAS</span>
+            <button class="btn-text-action" id="btn-draw-clear">CLEAR</button>
+          </div>
+          <div class="canvas-wrapper">
+            <canvas id="road-canvas"></canvas>
+          </div>
+          <div class="draw-actions-bar">
+            <div class="route-summary" id="draw-summary">Draw path on canvas</div>
+            <button class="btn btn-execute-draw" id="btn-draw-send" disabled>
+              <span>SEND ROUTE</span>
+              <span class="btn-arrow">➔</span>
+            </button>
+          </div>
+          <!-- Route Steps Breakdown -->
+          <div class="route-steps-container" id="route-steps-box" style="display: none;">
+            <div class="steps-title">GENERATED VECTOR COMMANDS:</div>
+            <div class="steps-list" id="route-steps-list"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Action Bar: Emergency Stop & Terminal -->
+    <footer class="app-footer">
+      <button class="btn-estop" id="btn-estop">
+        <span class="estop-icon">🛑</span>
+        <span class="estop-text">EMERGENCY STOP (M4)</span>
+      </button>
+
+      <!-- Live Terminal Drawer Bar -->
+      <div class="terminal-drawer" id="terminal-drawer">
+        <div class="terminal-header" id="terminal-toggle">
+          <span class="terminal-title">LIVE TELEMETRY // CONSOLE</span>
+          <span class="terminal-toggle-icon" id="terminal-icon">▲</span>
+        </div>
+        <div class="terminal-body" id="terminal-body">
+          <div class="terminal-logs" id="terminal-logs">
+            <div class="log-line system">[SYSTEM] Rover Web Controller ready.</div>
+          </div>
+          <button class="btn-clear-log" id="btn-clear-logs">CLEAR LOG</button>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

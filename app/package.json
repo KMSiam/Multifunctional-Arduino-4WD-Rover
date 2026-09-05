@@ -1,0 +1,13 @@
+{
+  "name": "rover-controller-app",
+  "version": "1.0.0",
+  "description": "Minimalist Mobile-First Web Bluetooth Controller for 4WD Arduino Rover",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
