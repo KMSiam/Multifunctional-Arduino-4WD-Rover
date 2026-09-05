@@ -22,6 +22,7 @@ class RoverApp {
     this.initDrawCanvas();
     this.initTerminal();
     this.initKeyboardControls();
+    this.initPWA();
   }
 
   initDOM() {
@@ -454,6 +455,55 @@ class RoverApp {
     line.textContent = `${time} ${text}`;
     this.terminalLogs.appendChild(line);
     this.terminalLogs.scrollTop = this.terminalLogs.scrollHeight;
+  }
+
+  // ==========================================================================
+  // PROGRESSIVE WEB APP (PWA) INSTALLATION & SERVICE WORKER
+  // ==========================================================================
+  initPWA() {
+    this.btnInstall = document.getElementById('btn-install');
+    this.deferredPrompt = null;
+
+    // Register Service Worker for offline performance and PWA compliance
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          console.log('[PWA] Service Worker registered with scope:', reg.scope);
+        }).catch((err) => {
+          console.warn('[PWA] Service Worker registration failed:', err);
+        });
+      });
+    }
+
+    // Capture install prompt event (Chrome / Edge / Android)
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.deferredPrompt = e;
+      if (this.btnInstall) {
+        this.btnInstall.style.display = 'flex';
+      }
+      this.logTerminal('[PWA] Ready to install! Tap INSTALL to add to home screen.', 'system');
+    });
+
+    if (this.btnInstall) {
+      this.btnInstall.addEventListener('click', async () => {
+        if (!this.deferredPrompt) return;
+        this.btnInstall.style.display = 'none';
+        this.deferredPrompt.prompt();
+        const choice = await this.deferredPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          this.logTerminal('[PWA] Rover App successfully installed on device!', 'rx');
+        }
+        this.deferredPrompt = null;
+      });
+    }
+
+    window.addEventListener('appinstalled', () => {
+      if (this.btnInstall) {
+        this.btnInstall.style.display = 'none';
+      }
+      this.logTerminal('[PWA] App installed as standalone application.', 'system');
+    });
   }
 }
 
