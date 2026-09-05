@@ -41,7 +41,6 @@ The rover supports 5 operational modes dynamically switchable from the web inter
 ## 📁 Repository Structure
 
 ```
-├── .clangd             # Clangd LSP configuration for Arduino AVR headers
 ├── .gitignore          # Git exclusion rules
 ├── README.md           # Project documentation
 ├── app/                # Web Bluetooth Controller Frontend

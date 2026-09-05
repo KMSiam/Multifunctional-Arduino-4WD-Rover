@@ -18,6 +18,7 @@ pnpm-debug.log*
 .env.*.local
 
 # Editor and OS
+.clangd
 .DS_Store
 Thumbs.db
 .idea/

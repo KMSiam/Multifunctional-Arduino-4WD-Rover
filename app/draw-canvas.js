@@ -26,9 +26,9 @@ export class DrawCanvas {
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = rect.height * dpr;
-    this.ctx.scale(dpr, dpr);
+    this.canvas.width = Math.round(rect.width * dpr);
+    this.canvas.height = Math.round(rect.height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.width = rect.width;
     this.height = rect.height;
     this.redraw();
@@ -46,6 +46,12 @@ export class DrawCanvas {
     this.canvas.addEventListener('mousedown', (e) => this.startDraw(e));
     this.canvas.addEventListener('mousemove', (e) => this.moveDraw(e));
     this.canvas.addEventListener('mouseup', (e) => this.endDraw(e));
+    this.canvas.addEventListener('mouseleave', (e) => {
+      if (this.isDrawing) this.endDraw(e);
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (this.isDrawing) this.endDraw(e);
+    });
   }
 
   getPointerPos(e) {

@@ -1,13 +1,13 @@
 /*
  ============================================================================
-  Multifunctional 4WD Arduino Uno Rover (Clean & Beginner-Friendly)
+  Multifunctional 4WD Arduino Uno Rover (Optimized & Responsive)
   
   Operating Modes:
     M0 = Remote Control Mode (F, B, L, R, S, 0-9)
-    M1 = Autonomous Line Following (3-Channel IR)
-    M2 = Autonomous Obstacle Avoidance (Ultrasonic + SG90 Servo)
+    M1 = Autonomous Line Following (3-Channel IR with Live Telemetry)
+    M2 = Autonomous Obstacle Avoidance (Ultrasonic + SG90 Servo Scan)
     M3 = Draw-a-Road / Paint-a-Path (e.g. D:F:1000, D:L:500, D:S)
-    M4 or S = Emergency Stop (Immediate Halt)
+    M4 or S = Emergency Stop (Immediate Hardware Halt)
  ============================================================================
 */
 
@@ -23,12 +23,12 @@ const int PIN_BT_RX   = 2;
 const int PIN_BT_TX   = 3;
 
 // L298N Motor Driver Pins
-const int PIN_ENA     = 5;   // Left Motors Speed (PWM)
+const int PIN_ENA     = 5;   // Left Motors Speed (Hardware PWM, Timer 0)
 const int PIN_IN1     = 6;   // Left Motors Direction 1
 const int PIN_IN2     = 7;   // Left Motors Direction 2
 const int PIN_IN3     = 8;   // Right Motors Direction 1
 const int PIN_IN4     = 9;   // Right Motors Direction 2
-const int PIN_ENB     = 10;  // Right Motors Speed (PWM)
+const int PIN_ENB     = 10;  // Right Motors Speed (Hardware PWM, Timer 1)
 
 // SG90 Servo Motor
 const int PIN_SERVO   = 11;
@@ -69,11 +69,15 @@ SoftwareSerial bt(PIN_BT_RX, PIN_BT_TX);
 Servo scanServo;
 
 enum Mode { REMOTE, LINE, OBSTACLE, DRAW, STOP };
-Mode currentMode = REMOTE;
+volatile Mode currentMode = REMOTE;
 
 int lastLineTurn = 0;              // -1 = Left, 1 = Right (for lost line recovery)
 unsigned long lastCommandTime = 0; // Tracks last valid remote command
 bool isMoving = false;
+
+// Forward declaration
+void checkSerial();
+void stopMotors();
 
 // ============================================================================
 // 4. MOTOR CONTROL FUNCTIONS
@@ -106,8 +110,41 @@ void stopMotors() {
 }
 
 // ============================================================================
-// 5. SENSOR & SERVO HELPERS
+// 5. SENSOR & SERVO HELPERS (Timer-Conflict Free)
 // ============================================================================
+// Send status message to Phone via BLE and USB Serial Monitor
+void sendMsg(const char* msg) {
+  bt.println(msg);
+  Serial.print(F("[ROVER] "));
+  Serial.println(msg);
+}
+
+// Restore Timer 1 Phase Correct PWM mode so Pin 10 (ENB) retains full PWM control
+void restoreTimer1PWM() {
+#if defined(TCCR1A) && defined(WGM10)
+  TCCR1A |= _BV(WGM10); // 8-bit Phase Correct PWM
+#endif
+}
+
+// Attach servo only when actively panning, and detach after to eliminate jitter & timer clash
+void attachServo() {
+  if (!scanServo.attached()) {
+    scanServo.attach(PIN_SERVO);
+  }
+}
+
+void detachServo() {
+  if (scanServo.attached()) {
+    scanServo.detach();
+    restoreTimer1PWM();
+  }
+}
+
+void setServo(int angle) {
+  attachServo();
+  scanServo.write(constrain(angle, 15, 165)); // Prevent mechanical strain
+}
+
 // Measure distance in centimeters using HC-SR04
 long getDistance() {
   digitalWrite(PIN_TRIG, LOW);
@@ -121,26 +158,39 @@ long getDistance() {
   return duration / 58;                             // Convert to cm
 }
 
-void setServo(int angle) {
-  scanServo.write(constrain(angle, 15, 165)); // Prevent mechanical strain
-}
-
-// Send status message to Phone via BLE and USB Serial Monitor
-void sendMsg(const char* msg) {
-  bt.println(msg);
-  Serial.print(F("[ROVER] "));
-  Serial.println(msg);
+// Non-blocking interruptible delay for autonomous loops:
+// Returns false immediately if an emergency stop or mode switch command is received!
+bool safeDelay(unsigned long ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    checkSerial();
+    if (currentMode != OBSTACLE && currentMode != LINE) {
+      stopMotors();
+      return false; // Abort current action immediately
+    }
+    delay(5);
+  }
+  return true;
 }
 
 // ============================================================================
 // 6. OPERATING MODES
 // ============================================================================
 
-// 1. Autonomous Line Following (Smooth Differential Steering)
+// 1. Autonomous Line Following (Smooth Differential Steering + Telemetry)
 void runLineFollowing() {
   bool L = (digitalRead(PIN_IR_L) == LINE_STATE);
   bool C = (digitalRead(PIN_IR_C) == LINE_STATE);
   bool R = (digitalRead(PIN_IR_R) == LINE_STATE);
+
+  // Send real-time sensor telemetry to Web App every 200ms
+  static unsigned long lastIrTelemetry = 0;
+  if (millis() - lastIrTelemetry > 200) {
+    lastIrTelemetry = millis();
+    char buf[36];
+    snprintf(buf, sizeof(buf), "[IR SENSORS] L:%d C:%d R:%d", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
+    sendMsg(buf);
+  }
 
   if (!L && C && !R) {
     // Centered -> Go straight
@@ -165,9 +215,18 @@ void runLineFollowing() {
   }
 }
 
-// 2. Autonomous Obstacle Avoidance (Look Left & Right)
+// 2. Autonomous Obstacle Avoidance (Look Left & Right + Live Distance Telemetry)
 void runObstacleAvoidance() {
   long distance = getDistance();
+
+  // Send live distance telemetry to Web App radar every 200ms
+  static unsigned long lastDistTelemetry = 0;
+  if (millis() - lastDistTelemetry > 200) {
+    lastDistTelemetry = millis();
+    char buf[32];
+    snprintf(buf, sizeof(buf), "[DISTANCE FRONT] %ld cm", distance);
+    sendMsg(buf);
+  }
 
   if (distance > OBSTACLE_DIST) {
     drive(1, 1); // Path clear -> Move forward
@@ -176,43 +235,44 @@ void runObstacleAvoidance() {
     stopMotors();
     sendMsg("OBSTACLE:DETECTED");
     drive(-1, -1);
-    delay(250);
+    if (!safeDelay(250)) return;
     stopMotors();
 
     // Look left (150 degrees)
     setServo(150);
-    delay(300);
+    if (!safeDelay(300)) { detachServo(); return; }
     long leftDist = getDistance();
 
     // Look right (30 degrees)
     setServo(30);
-    delay(500);
+    if (!safeDelay(500)) { detachServo(); return; }
     long rightDist = getDistance();
 
-    // Re-center servo
+    // Re-center servo and release timer to free Pin 10 PWM
     setServo(90);
-    delay(250);
+    if (!safeDelay(250)) { detachServo(); return; }
+    detachServo();
 
     // Steer toward the side with more space
     if (leftDist > rightDist && leftDist > OBSTACLE_DIST) {
       sendMsg("OBSTACLE:LEFT");
       drive(-1, 1); // Turn left
-      delay(400);
+      if (!safeDelay(400)) return;
     } else if (rightDist >= leftDist && rightDist > OBSTACLE_DIST) {
       sendMsg("OBSTACLE:RIGHT");
       drive(1, -1); // Turn right
-      delay(400);
+      if (!safeDelay(400)) return;
     } else {
       // Dead end -> Turn around
       sendMsg("OBSTACLE:AROUND");
       drive(1, -1);
-      delay(800);
+      if (!safeDelay(800)) return;
     }
     stopMotors();
   }
 }
 
-// 3. Draw-a-Road Timed Movement (Interruptible by Emergency Stop)
+// 3. Draw-a-Road Timed Movement (Interruptible by Emergency Stop / Clear)
 void executeDraw(char dir, unsigned long durationMs) {
   switch (dir) {
     case 'F': drive(1, 1);   break;
@@ -222,17 +282,18 @@ void executeDraw(char dir, unsigned long durationMs) {
     default: return;
   }
 
-  // Non-blocking timer: immediately cancels if user sends 'S' or 'M'
+  // Non-blocking timer: immediately cancels if user sends 'S', 'M', or 'D:S'
   unsigned long start = millis();
   while (millis() - start < durationMs) {
     if (bt.available() > 0 || Serial.available() > 0) {
       char c = (bt.available() > 0) ? bt.peek() : Serial.peek();
-      if (c == 'S' || c == 's' || c == 'M' || c == 'm') {
+      if (c == 'S' || c == 's' || c == 'M' || c == 'm' || c == 'D' || c == 'd') {
         stopMotors();
         sendMsg("DRAW:STOPPED");
         return;
       }
     }
+    delay(5);
   }
   stopMotors();
   sendMsg("DRAW:DONE");
@@ -248,6 +309,7 @@ void handleCommand(char* cmd) {
   if (cmd[0] == 'S' || cmd[0] == 's' || (cmd[0] == 'M' && cmd[1] == '4')) {
     stopMotors();
     currentMode = STOP;
+    detachServo();
     sendMsg("EMERGENCY_STOP");
     return;
   }
@@ -255,7 +317,7 @@ void handleCommand(char* cmd) {
   // 2. Mode Switches ('M0', 'M1', 'M2', 'M3')
   if (cmd[0] == 'M' || cmd[0] == 'm') {
     stopMotors();
-    setServo(90);
+    detachServo();
     lastLineTurn = 0;
 
     switch (cmd[1]) {
@@ -306,14 +368,18 @@ void handleCommand(char* cmd) {
 }
 
 // Reads incoming text lines from either Bluetooth HM-10 or USB Serial Monitor
+// Includes an 80ms idle timeout so single-character or no-newline commands execute cleanly!
 void checkSerial() {
   static char buffer[32];
   static int idx = 0;
+  static unsigned long lastCharTime = 0;
 
   Stream* streams[2] = {&bt, &Serial};
   for (int i = 0; i < 2; i++) {
     while (streams[i]->available() > 0) {
       char c = (char)streams[i]->read();
+      lastCharTime = millis();
+
       if (c == '\n' || c == '\r') {
         if (idx > 0) {
           buffer[idx] = '\0';
@@ -324,6 +390,13 @@ void checkSerial() {
         buffer[idx++] = c;
       }
     }
+  }
+
+  // Idle timeout: process command if sender didn't append newline (e.g. Serial Monitor "No line ending")
+  if (idx > 0 && (millis() - lastCharTime > 80)) {
+    buffer[idx] = '\0';
+    handleCommand(buffer);
+    idx = 0;
   }
 }
 
@@ -347,9 +420,10 @@ void setup() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
 
-  // Initialize Servo
-  scanServo.attach(PIN_SERVO);
+  // Center servo once, then detach to keep Timer 1 PWM active for Pin 10
   setServo(90);
+  delay(300);
+  detachServo();
 
   // Start in Remote Mode (Stationary)
   currentMode = REMOTE;
